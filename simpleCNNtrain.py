@@ -25,7 +25,7 @@ dim_downsized = int(dim_image/2)            # downsized image dimension
 
 trainFraction = 0.6875  # fraction of images per cosmology for training 
 testFraction = 1-trainFraction 
-n_cosmosToTrain = 2  # number of cosmologies to take images from 
+n_cosmosToTrain = 1  # number of cosmologies to take images from 
 n_trainimages = int(n_imagespercosmo*trainFraction)   # number of images per cosmology to train
 
 learning_rate = 0.005
@@ -185,5 +185,5 @@ print("--- Training time: %s seconds ---" % (time.time() - start_time))
 
 
 # save the network 
-PATH_save = '/n/holyscratch01/dvorkin_lab/Users/tianliwang/simpleNet_test.pth'
+PATH_save = '/n/holyscratch01/dvorkin_lab/Users/tianliwang/simpleNet_test_1cosmo.pth'
 torch.save(net.state_dict(), PATH_save) 
