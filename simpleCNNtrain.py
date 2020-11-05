@@ -18,15 +18,25 @@ rootpath = '/n/holyscratch01/dvorkin_lab/Users/tianliwang/maps_unzipped/'  # loc
 # these parameters are defined in the paper 
 n_epoch = 10     # number of epochs to run 
 n_imagespercosmo = 512  # number of images per cosmology 
-n_perbatch = 32         # batch size
+n_perbatch = 32         # batch size for training 
+n_perbatch_validate = n_perbatch  # set it to the same as training for now 
 n_batch = n_imagespercosmo/n_perbatch  # number of minibatches 
 dim_image = 1024 
 dim_downsized = int(dim_image/2)            # downsized image dimension 
 
-trainFraction = 0.6875  # fraction of images per cosmology for training 
-testFraction = 1-trainFraction 
-n_cosmosToTrain = 1  # number of cosmologies to take images from 
-n_trainimages = int(n_imagespercosmo*trainFraction)   # number of images per cosmology to train
+trainFraction = 6.0/16  # fraction of images per cosmology for training 
+validateFraction = 2.0/16
+testFraction = 1-trainFraction-validateFraction
+
+n_cosmosToTrain = 8 
+n_trainimages = int(n_imagespercosmo*trainFraction)    # number of images per cosmology to train
+n_validateimages = int(n_imagespercosmo*validateFraction)   # number of images per cosmology to validate
+
+# start and end image indices for training and validating 
+startIndices_train = np.ones(n_cosmosToTrain).astype(int)
+endIndices_train = n_trainimages*np.ones(n_cosmosToTrain).astype(int)
+startIndices_validate = (n_trainimages+1)*np.ones(n_cosmosToTrain).astype(int)
+endIndices_validate = (n_trainimages+n_validateimages)*np.ones(n_cosmosToTrain).astype(int)
 
 learning_rate = 0.005
 
@@ -96,6 +106,52 @@ def read_files(path, Oms, sis, start_indices, end_indices):
     return np.array(filedata)
            
     
+def test_cnn(network, testinputs, batchsize, isTrackingloss, **kwargs): 
+    '''
+    Input: CNN object, testing data, batch size for testing, boolean for whether 
+    to track losses bewteen test ouputs and targets, **kwargs includes the loss function
+    criterion and the targetting outputs. Target should be in the form of 
+    an array of (omegam, sigma8) parameters each corresponding to the target of one batch. 
+    
+    Call with 
+    test_cnn(network, testinputs, batchsize, False) 
+    or 
+    test_cnn(network, testinputs, batchsize, True, loss_fn=loss_fn, target=target)
+    
+    Function: Run the network with test inputs and specified batch size and track loss as 
+    requested. 
+    
+    Output: 
+    If isTrackingloss is True, return (np array of predicted outputs, np array of losses for each batch)
+    If isTrackingloss is False, return np array of predicted outputs
+    '''
+    
+    # unpack optional arguments **kwargs 
+    if (isTrackingloss): 
+        loss_fn = kwargs.get('loss_fn', None)
+        testtargets = kwargs.get('target', None)
+        losses = []
+    
+    # make the data into 4D tensor and put each batch into iterable 
+    testloader = torch.utils.data.DataLoader(testinputs, batch_size=batchsize, shuffle=False)
+    
+    predictions = []  # stores outputs of network with test data inputs 
+    
+    with torch.no_grad(): 
+        for i, testdata in enumerate(testloader, 0):
+            testoutputs = network(testdata)
+            predictions.append(testoutputs[0].numpy()) 
+
+            if (isTrackingloss): 
+                testtarget = torch.tensor(testtargets[i]).repeat(batchsize, 1)  
+                losses.append(loss_fn(testoutputs, testtarget))
+    
+    if (isTrackingloss): 
+        return np.array(predictions), np.array(losses)
+    
+    return np.array(predictions)
+
+
 # network structure 
 
 class Net (nn.Module):
@@ -110,18 +166,25 @@ class Net (nn.Module):
         self.conv64to128_5 = nn.Conv2d(64, 128, 5)
         self.conv128to256_5 = nn.Conv2d(128, 256, 5)
         self.conv256to512_5 = nn.Conv2d(256, 512, 5)
-        self.conv512to256_5 = nn.Conv2d(512, 216, 5)
-        self.conv256to512_3 = nn.Conv2d(216, 512, 3)
+        self.conv512to256_5 = nn.Conv2d(512, 256, 5)
+        self.conv256to512_3 = nn.Conv2d(256, 512, 3)
+        
+        self.bn32 = nn.BatchNorm2d(32) 
+        self.bn64 = nn.BatchNorm2d(64)
+        self.bn128 = nn.BatchNorm2d(128)
+        self.bn256 = nn.BatchNorm2d(256)
+        self.bn512 = nn.BatchNorm2d(512)
+        self.bn256_2 = nn.BatchNorm2d(256)
         
         self.fc = nn.Linear(512, 2)
 
     def forward(self, x):
-        x = self.pool2(F.relu(self.conv1to32_5(x)))  # out: 254x254x32 
-        x = self.pool2(F.relu(self.conv32to64_5(x)))  # out: 125x125x64 
-        x = self.pool2(F.relu(self.conv64to128_5(x)))  # out: 60x60x128 
-        x = self.pool2(F.relu(self.conv128to256_5(x)))  # out: 28x28x256 
-        x = self.pool2(F.relu(self.conv256to512_5(x)))  # out: 12x12x512
-        x = F.relu(self.conv512to256_5(x))  # out: 8x8x256 
+        x = self.pool2(F.relu(self.bn32(self.conv1to32_5(x))))  # out: 254x254x32 
+        x = self.pool2(F.relu(self.bn64(self.conv32to64_5(x))))  # out: 125x125x64 
+        x = self.pool2(F.relu(self.bn128(self.conv64to128_5(x))))  # out: 60x60x128 
+        x = self.pool2(F.relu(self.bn256(self.conv128to256_5(x))))  # out: 28x28x256 
+        x = self.pool2(F.relu(self.bn512(self.conv256to512_5(x))))  # out: 12x12x512
+        x = F.relu(self.bn256_2(self.conv512to256_5(x)))  # out: 8x8x256 
         x = self.pool6(F.relu(self.conv256to512_3(x)))  # out: 6x6x512->1x1x512
         
         x = x.view(-1, 512)
@@ -140,16 +203,24 @@ optimizer = optim.SGD(net.parameters(), lr=learning_rate)
 # read in all the omegam and sigma8 values from the directory 
 Omegam_strings, sigma8_strings = read_parametersfromfile(rootpath)
 
-startIndices_train = np.ones(n_cosmosToTrain).astype(int)
-endIndices_train = n_trainimages*np.ones(n_cosmosToTrain).astype(int)
 Omegastrings_train = Omegam_strings[:n_cosmosToTrain]
 sigmastrings_train = sigma8_strings[:n_cosmosToTrain]
 Omegas_train = np.array(Omegastrings_train).astype(np.float)
 sigmas_train = np.array(sigmastrings_train).astype(np.float)
 
+# use the same sets of params for validation as training for now (can change as appropriate)
+Omegastrings_validate = Omegastrings_train
+sigmastrings_validate = sigmastrings_train
+Omegas_validate = np.array(Omegastrings_validate).astype(np.float)
+sigmas_validate = np.array(sigmastrings_validate).astype(np.float)
+
+
 start_time = time.time()  
-inputs_train = read_files(rootpath, Omegastrings_train, sigmastrings_train, startIndices_train, endIndices_train)
-print("--- Time to load the files: %s seconds ---" % (time.time() - start_time))
+inputs_train = read_files(rootpath, Omegastrings_train, sigmastrings_train, 
+                          startIndices_train, endIndices_train)
+inputs_validate = read_files(rootpath, Omegastrings_validate, sigmastrings_validate, 
+                             startIndices_validate, endIndices_validate)
+print("--- Time to load the files: %s seconds ---" % (time.time() - start_time), flush=True)
 
 # make the data into 4D tensor and put each batch into iterable 
 trainloader = torch.utils.data.DataLoader(inputs_train, batch_size=n_perbatch, shuffle=False)
@@ -159,7 +230,8 @@ trainloader = torch.utils.data.DataLoader(inputs_train, batch_size=n_perbatch, s
 start_time = time.time()  # to time the training
 
 for epoch in range(n_epoch): 
-    running_loss = 0.0 
+    
+    running_loss = 0.0   # running loss of training per epoch
     
     for i, data in enumerate(trainloader, 0): 
         # update target value of sigma8 and omegam (stacked to the correct dimension to match the number per batch)
@@ -179,11 +251,20 @@ for epoch in range(n_epoch):
         
         running_loss += loss.item()
     
-    print('Epoch %d loss: %.3f' % (epoch + 1, running_loss/len(trainloader)))
+    print('Epoch %d training loss: %.3f' % (epoch + 1, running_loss/len(trainloader)), flush=True)
+    
+    # Validation 
+    n_batch_validate = int(n_validateimages/n_perbatch_validate)
+    targets_temp = np.concatenate((np.array([Omegas_validate]).T, np.array([sigmas_validate]).T), axis=1) # temp stacked targets of all comsos being trained
+    targets_validate = np.repeat(targets_temp, n_batch_validate, axis=0)  # repeat each set of parameters by the number of batches
+    outputs_validate, losses_validate = test_cnn(net, inputs_validate, n_perbatch_validate, 
+                                                 True, loss_fn=criterion, target=targets_validate)
+    
+    print('Epoch %d validation loss: %.3f' % (epoch + 1, np.sum(losses_validate)/n_batch_validate), flush=True)
         
-print("--- Training time: %s seconds ---" % (time.time() - start_time))
+print("--- Training time: %s seconds ---" % (time.time() - start_time), flush=True)
 
 
 # save the network 
-PATH_save = '/n/holyscratch01/dvorkin_lab/Users/tianliwang/simpleNet_test_1cosmo.pth'
+PATH_save = '/n/holyscratch01/dvorkin_lab/Users/tianliwang/simpleNet_test_bn.pth'
 torch.save(net.state_dict(), PATH_save) 
