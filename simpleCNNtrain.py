@@ -16,7 +16,7 @@ import os
 rootpath = '/n/holyscratch01/dvorkin_lab/Users/tianliwang/maps_unzipped/'  # location of maps 
 
 # these parameters are defined in the paper 
-n_epoch = 10     # number of epochs to run 
+n_epoch = 6     # number of epochs to run 
 n_imagespercosmo = 512  # number of images per cosmology 
 n_perbatch = 32         # batch size for training 
 n_perbatch_validate = n_perbatch  # set it to the same as training for now 
