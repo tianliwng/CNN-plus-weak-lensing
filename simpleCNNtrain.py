@@ -16,7 +16,7 @@ import os
 rootpath = '/n/holyscratch01/dvorkin_lab/Users/tianliwang/maps_unzipped/'  # location of maps 
 
 # these parameters are defined in the paper 
-n_epoch = 6     # number of epochs to run 
+n_epoch = 10     # number of epochs to run 
 n_imagespercosmo = 512  # number of images per cosmology 
 n_perbatch = 32         # batch size for training 
 n_perbatch_validate = n_perbatch  # set it to the same as training for now 
@@ -28,7 +28,7 @@ trainFraction = 6.0/16  # fraction of images per cosmology for training
 validateFraction = 2.0/16
 testFraction = 1-trainFraction-validateFraction
 
-n_cosmosToTrain = 8 
+n_cosmosToTrain = 10 
 n_trainimages = int(n_imagespercosmo*trainFraction)    # number of images per cosmology to train
 n_validateimages = int(n_imagespercosmo*validateFraction)   # number of images per cosmology to validate
 
@@ -266,5 +266,5 @@ print("--- Training time: %s seconds ---" % (time.time() - start_time), flush=Tr
 
 
 # save the network 
-PATH_save = '/n/holyscratch01/dvorkin_lab/Users/tianliwang/simpleNet_test_bn.pth'
+PATH_save = '/n/holyscratch01/dvorkin_lab/Users/tianliwang/simpleNet_test_bn2.pth'
 torch.save(net.state_dict(), PATH_save) 
