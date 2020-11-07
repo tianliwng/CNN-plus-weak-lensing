@@ -31,7 +31,7 @@ trainFraction = 6.0/16  # fraction of images per cosmology for training
 validateFraction = 2.0/16
 testFraction = 1-trainFraction-validateFraction
 
-n_cosmosToTrain = 91 
+n_cosmosToTrain = 10 
 n_trainimages = int(n_imagespercosmo*trainFraction)    # number of images per cosmology to train
 n_validateimages = int(n_imagespercosmo*validateFraction)   # number of images per cosmology to validate
 
@@ -159,41 +159,58 @@ def test_cnn(network, testinputs, batchsize, isTrackingloss, **kwargs):
 
 # network structure 
 
+def conv_block(in_f, out_f, *args, **kwargs):
+    return nn.Sequential(
+        nn.Conv2d(in_f, out_f, *args, **kwargs),
+        nn.BatchNorm2d(out_f),
+        nn.ReLU()
+    )
+
 class Net (nn.Module):
     def __init__(self):
         super(Net, self).__init__()
-        self.pool2 = nn.AvgPool2d(2, 2)
-        self.pool4 = nn.AvgPool2d(4, 4)
-        self.pool6 = nn.AvgPool2d(6, 6)
         
-        self.conv1to32_5 = nn.Conv2d(1, 32, 5)
-        self.conv32to64_5 = nn.Conv2d(32, 64, 5)
-        self.conv64to128_5 = nn.Conv2d(64, 128, 5)
-        self.conv128to256_5 = nn.Conv2d(128, 256, 5)
-        self.conv256to512_5 = nn.Conv2d(256, 512, 5)
-        self.conv512to256_5 = nn.Conv2d(512, 256, 5)
-        self.conv256to512_3 = nn.Conv2d(256, 512, 3)
-        
-        self.bn32 = nn.BatchNorm2d(32) 
-        self.bn64 = nn.BatchNorm2d(64)
-        self.bn128 = nn.BatchNorm2d(128)
-        self.bn256 = nn.BatchNorm2d(256)
-        self.bn512 = nn.BatchNorm2d(512)
-        self.bn256_2 = nn.BatchNorm2d(256)
+        self.cnn_layers = nn.Sequential(
+            # layers 1+2 
+            conv_block(1, 32, kernel_size=3), 
+            conv_block(32, 32, kernel_size=3), 
+            nn.AvgPool2d(2, 2), 
+            # layers 3+4
+            conv_block(32, 64, kernel_size=3), 
+            conv_block(64, 64, kernel_size=3), 
+            nn.AvgPool2d(2, 2), 
+            # layers 5-7 
+            conv_block(64, 128, kernel_size=3),
+            conv_block(128, 64, kernel_size=1),
+            conv_block(64, 128, kernel_size=3),
+            nn.AvgPool2d(2, 2),
+            # layers 8-10 
+            conv_block(128, 256, kernel_size=3),
+            conv_block(256, 128, kernel_size=1),
+            conv_block(128, 256, kernel_size=3),
+            nn.AvgPool2d(2, 2),
+            # layers 11-13 
+            conv_block(256, 512, kernel_size=3),
+            conv_block(512, 256, kernel_size=1),
+            conv_block(256, 512, kernel_size=3),
+            nn.AvgPool2d(2, 2),
+            # layers 14-18 
+            conv_block(512, 512, kernel_size=3),
+            conv_block(512, 256, kernel_size=1),
+            conv_block(256, 512, kernel_size=3),
+            conv_block(512, 256, kernel_size=1),
+            nn.Conv2d(256, 512, kernel_size=3),
+            nn.ReLU(),             # no batch norm on last convolution layer 
+            nn.AvgPool2d(6, 6)
+        )
         
         self.fc = nn.Linear(512, 2)
 
     def forward(self, x):
-        x = self.pool2(F.relu(self.bn32(self.conv1to32_5(x))))  # out: 254x254x32 
-        x = self.pool2(F.relu(self.bn64(self.conv32to64_5(x))))  # out: 125x125x64 
-        x = self.pool2(F.relu(self.bn128(self.conv64to128_5(x))))  # out: 60x60x128 
-        x = self.pool2(F.relu(self.bn256(self.conv128to256_5(x))))  # out: 28x28x256 
-        x = self.pool2(F.relu(self.bn512(self.conv256to512_5(x))))  # out: 12x12x512
-        x = F.relu(self.bn256_2(self.conv512to256_5(x)))  # out: 8x8x256 
-        x = self.pool6(F.relu(self.conv256to512_3(x)))  # out: 6x6x512->1x1x512
-        
+        x = self.cnn_layers(x)
         x = x.view(-1, 512)
         x = self.fc(x)
+        
         return x
     
 
@@ -274,6 +291,6 @@ print("--- Training time: %s seconds ---" % (time.time() - start_time), flush=Tr
 
 
 # save the network 
-PATH_save = '/n/holyscratch01/dvorkin_lab/Users/tianliwang/simpleNet_test_bn2_gpu_allCosmo.pth'
+PATH_save = '/n/holyscratch01/dvorkin_lab/Users/tianliwang/fullNet_bn_gpu_10Cosmo.pth'
 torch.save(net.state_dict(), PATH_save) 
 
