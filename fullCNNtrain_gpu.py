@@ -34,6 +34,7 @@ testFraction = 1-trainFraction-validateFraction
 n_cosmosToTrain = 40 
 n_trainimages = int(n_imagespercosmo*trainFraction)    # number of images per cosmology to train
 n_validateimages = int(n_imagespercosmo*validateFraction)   # number of images per cosmology to validate
+n_batch_train = int(n_trainimages/n_perbatch)  # number of minibatches per cosmology to train 
 
 # start and end image indices for training and validating 
 startIndices_train = np.ones(n_cosmosToTrain).astype(int)
@@ -259,10 +260,10 @@ for epoch in range(n_epoch):
     for i, data in enumerate(trainloader, 0): 
         data = data.to(device)  # GPU
         # update target value of sigma8 and omegam (stacked to the correct dimension to match the number per batch)
-        if (i % n_trainimages == 0): 
-            params_index = i//n_trainimages  
+        if (i % n_batch_train == 0): 
+            params_index = int(i//n_batch_train) 
             
-            # change target every n_trainimages images 
+            # change target every n_batch_train batches  
             target = torch.tensor([Omegas_train[params_index], sigmas_train[params_index]]).repeat(n_perbatch, 1)  
             target = target.to(device)  # GPU
         
