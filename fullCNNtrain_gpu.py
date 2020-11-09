@@ -23,7 +23,6 @@ n_epoch = 15     # number of epochs to run
 n_imagespercosmo = 512  # number of images per cosmology 
 n_perbatch = 32         # batch size for training 
 n_perbatch_validate = n_perbatch  # set it to the same as training for now 
-n_batch = n_imagespercosmo/n_perbatch  # number of minibatches 
 dim_image = 1024 
 dim_downsized = int(dim_image/2)            # downsized image dimension 
 
@@ -286,7 +285,7 @@ for epoch in range(n_epoch):
     outputs_validate, losses_validate = test_cnn(net, inputs_validate, n_perbatch_validate, 
                                                  True, loss_fn=criterion, target=targets_validate)
     
-    print('Epoch %d validation loss: %.3f' % (epoch + 1, np.sum(losses_validate)/n_batch_validate), flush=True)
+    print('Epoch %d validation loss: %.3f' % (epoch + 1, np.sum(losses_validate)/len(losses_validate)), flush=True)
         
 print("--- Training time: %s seconds ---" % (time.time() - start_time), flush=True)
 
