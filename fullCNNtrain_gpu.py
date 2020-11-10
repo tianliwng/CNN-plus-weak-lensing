@@ -7,6 +7,7 @@ import torch
 import torch.nn as nn 
 import torch.nn.functional as F 
 import torch.optim as optim
+from torch.optim.lr_scheduler import MultiStepLR
 
 import time
 import os
@@ -19,18 +20,19 @@ print(device)
 rootpath = '/n/holyscratch01/dvorkin_lab/Users/tianliwang/maps_unzipped/'  # location of maps 
 
 # these parameters are defined in the paper 
-n_epoch = 15     # number of epochs to run 
+n_epoch = 30     # number of epochs to run 
 n_imagespercosmo = 512  # number of images per cosmology 
 n_perbatch = 32         # batch size for training 
 n_perbatch_validate = n_perbatch  # set it to the same as training for now 
+n_batch = n_imagespercosmo/n_perbatch  # number of minibatches 
 dim_image = 1024 
 dim_downsized = int(dim_image/2)            # downsized image dimension 
 
-trainFraction = 6.0/16  # fraction of images per cosmology for training 
-validateFraction = 2.0/16
+trainFraction = 10.0/16  # fraction of images per cosmology for training 
+validateFraction = 3.0/16
 testFraction = 1-trainFraction-validateFraction
 
-n_cosmosToTrain = 40 
+n_cosmosToTrain = 90 
 n_trainimages = int(n_imagespercosmo*trainFraction)    # number of images per cosmology to train
 n_validateimages = int(n_imagespercosmo*validateFraction)   # number of images per cosmology to validate
 n_batch_train = int(n_trainimages/n_perbatch)  # number of minibatches per cosmology to train 
@@ -222,6 +224,7 @@ net.to(device)  #GPU
 # loss function and training rate defined by paper 
 criterion = nn.L1Loss()  # MAE loss 
 optimizer = optim.SGD(net.parameters(), lr=learning_rate)
+scheduler = MultiStepLR(optimizer, milestones=[10,15,20,25], gamma=0.1)     # set training schedule 
 
 # read in all the omegam and sigma8 values from the directory 
 Omegam_strings, sigma8_strings = read_parametersfromfile(rootpath)
@@ -252,8 +255,13 @@ trainloader = torch.utils.data.DataLoader(inputs_train, batch_size=n_perbatch, s
 # train the network 
 start_time = time.time()  # to time the training
 
+losseslist_train = []
+losseslist_validate = []
+
 for epoch in range(n_epoch): 
-    
+    if (epoch == 0 or epoch == 10 or epoch == 15 or epoch == 20 or epoch == 25): 
+        print('learning rate: {}'.format(optim.param_groups[0]['lr']), flush=True)
+
     running_loss = 0.0   # running loss of training per epoch
     
     for i, data in enumerate(trainloader, 0): 
@@ -277,7 +285,8 @@ for epoch in range(n_epoch):
         running_loss += loss.item()
     
     print('Epoch %d training loss: %.3f' % (epoch + 1, running_loss/len(trainloader)), flush=True)
-    
+    losseslist_train.append(running_loss/len(trainloader))
+
     # Validation 
     n_batch_validate = int(n_validateimages/n_perbatch_validate)
     targets_temp = np.concatenate((np.array([Omegas_validate]).T, np.array([sigmas_validate]).T), axis=1) # temp stacked targets of all comsos being trained
@@ -286,11 +295,18 @@ for epoch in range(n_epoch):
                                                  True, loss_fn=criterion, target=targets_validate)
     
     print('Epoch %d validation loss: %.3f' % (epoch + 1, np.sum(losses_validate)/len(losses_validate)), flush=True)
-        
+    losseslist_validate.append(np.sum(losses_validate)/len(losses_validate))
+    
+    scheduler.step()  # update learning rate 
+
+
 print("--- Training time: %s seconds ---" % (time.time() - start_time), flush=True)
 
 
 # save the network 
-PATH_save = '/n/holyscratch01/dvorkin_lab/Users/tianliwang/fullNet_bn_gpu_10Cosmo.pth'
+PATH_save = '/n/holyscratch01/dvorkin_lab/Users/tianliwang/fullNet_gpu_90Cosmo_30epoch.pth'
 torch.save(net.state_dict(), PATH_save) 
+
+# save the losses 
+np.save('/n/holyscratch01/dvorkin_lab/Users/tianliwang/losses_output.npy', [losseslist_train, losseslist_validate])
 
