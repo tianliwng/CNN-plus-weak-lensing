@@ -259,9 +259,6 @@ losseslist_train = []
 losseslist_validate = []
 
 for epoch in range(n_epoch): 
-    if (epoch == 0 or epoch == 10 or epoch == 15 or epoch == 20 or epoch == 25): 
-        print('learning rate: {}'.format(optim.param_groups[0]['lr']), flush=True)
-
     running_loss = 0.0   # running loss of training per epoch
     
     for i, data in enumerate(trainloader, 0): 
