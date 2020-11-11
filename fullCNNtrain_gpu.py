@@ -8,6 +8,9 @@ import torch.nn as nn
 import torch.nn.functional as F 
 import torch.optim as optim
 from torch.optim.lr_scheduler import MultiStepLR
+import torchvision
+import torchvision.transforms as transforms
+from torch.utils.data import Dataset, DataLoader
 
 import time
 import os
@@ -28,8 +31,8 @@ n_batch = n_imagespercosmo/n_perbatch  # number of minibatches
 dim_image = 1024 
 dim_downsized = int(dim_image/2)            # downsized image dimension 
 
-trainFraction = 10.0/16  # fraction of images per cosmology for training 
-validateFraction = 3.0/16
+trainFraction = 12.0/16  # fraction of images per cosmology for training 
+validateFraction = 1.0/16
 testFraction = 1-trainFraction-validateFraction
 
 n_cosmosToTrain = 90 
@@ -124,7 +127,7 @@ def test_cnn(network, testinputs, batchsize, isTrackingloss, **kwargs):
     test_cnn(network, testinputs, batchsize, True, loss_fn=loss_fn, target=target)
     
     Function: Run the network with test inputs and specified batch size and track loss as 
-    requested. 
+    requested in torch.no_grad() env. 
     
     Output: 
     If isTrackingloss is True, return (np array of predicted outputs, np array of losses for each batch)
@@ -138,7 +141,7 @@ def test_cnn(network, testinputs, batchsize, isTrackingloss, **kwargs):
         losses = []
     
     # make the data into 4D tensor and put each batch into iterable 
-    testloader = torch.utils.data.DataLoader(testinputs, batch_size=batchsize, shuffle=False)
+    testloader = DataLoader(testinputs, batch_size=batchsize, shuffle=False)
     
     predictions = []  # stores outputs of network with test data inputs 
     
@@ -214,8 +217,36 @@ class Net (nn.Module):
         x = self.fc(x)
         
         return x
+ 
+################ NEW CODE ################
+# dataset Class 
+class LensingDataset(Dataset):
+    """Lensing images dataset."""
+    def __init__(self, data, transform=None):
+        """
+        Args:
+            data (np.array): images being used for the network. 
+            transform (callable, optional): Optional transform to be applied on a sample.
+        """
+        
+        self.data = data 
+        self.transform = transform
+        
+    def __len__(self):
+        return len(self.data) 
     
-
+    def __getitem__(self, idx):
+        '''
+        returns the idxth image in data as a tensor 
+        '''
+        sample = torch.tensor(self.data[idx])
+        
+        if self.transform:
+            sample = self.transform(sample)
+            
+        return sample 
+    
+    
 ############################# Code ##################################
 
 net = Net()
@@ -248,8 +279,17 @@ inputs_validate = read_files(rootpath, Omegastrings_validate, sigmastrings_valid
                              startIndices_validate, endIndices_validate)
 print("--- Time to load the files: %s seconds ---" % (time.time() - start_time), flush=True)
 
+################ NEW CODE ################
+# transformations applied to the images 
+transform_train = transforms.Compose([
+    transforms.RandomRotation(90), 
+    transforms.RandomHorizontalFlip(p=0.5),
+    transforms.RandomVerticalFlip(p=0.5)
+])
+
 # make the data into 4D tensor and put each batch into iterable 
-trainloader = torch.utils.data.DataLoader(inputs_train, batch_size=n_perbatch, shuffle=False)
+dataset_train = LensingDataset(inputs_train, transform_train)
+trainloader = DataLoader(dataset_train, batch_size=n_perbatch, shuffle=False)
 
 
 # train the network 
@@ -301,9 +341,9 @@ print("--- Training time: %s seconds ---" % (time.time() - start_time), flush=Tr
 
 
 # save the network 
-PATH_save = '/n/holyscratch01/dvorkin_lab/Users/tianliwang/fullNet_gpu_90Cosmo_30epoch.pth'
+PATH_save = '/n/holyscratch01/dvorkin_lab/Users/tianliwang/fullNet_90Cosmo_30epoch_flip.pth'
 torch.save(net.state_dict(), PATH_save) 
 
 # save the losses 
-np.save('/n/holyscratch01/dvorkin_lab/Users/tianliwang/losses_output.npy', [losseslist_train, losseslist_validate])
+np.save('/n/holyscratch01/dvorkin_lab/Users/tianliwang/losses_output_flip.npy', [losseslist_train, losseslist_validate])
 
