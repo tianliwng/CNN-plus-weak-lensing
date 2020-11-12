@@ -31,8 +31,8 @@ n_batch = n_imagespercosmo/n_perbatch  # number of minibatches
 dim_image = 1024 
 dim_downsized = int(dim_image/2)            # downsized image dimension 
 
-trainFraction = 12.0/16  # fraction of images per cosmology for training 
-validateFraction = 1.0/16
+trainFraction = 10.0/16  # fraction of images per cosmology for training 
+validateFraction = 2.0/16
 testFraction = 1-trainFraction-validateFraction
 
 n_cosmosToTrain = 90 
@@ -222,14 +222,16 @@ class Net (nn.Module):
 # dataset Class 
 class LensingDataset(Dataset):
     """Lensing images dataset."""
-    def __init__(self, data, transform=None):
+    def __init__(self, data, targets, transform=None):
         """
         Args:
             data (np.array): images being used for the network. 
+            targets (np.array): target (omegam, sigma8) values for each image. 
             transform (callable, optional): Optional transform to be applied on a sample.
         """
         
         self.data = data 
+        self.targets = targets
         self.transform = transform
         
     def __len__(self):
@@ -240,11 +242,12 @@ class LensingDataset(Dataset):
         returns the idxth image in data as a tensor 
         '''
         sample = torch.tensor(self.data[idx])
+        label = torch.tensor(self.targets[idx])
         
         if self.transform:
-            sample = self.transform(sample)
+            sample = self.transform(sample)      
             
-        return sample 
+        return sample, label 
     
     
 ############################# Code ##################################
@@ -282,15 +285,19 @@ print("--- Time to load the files: %s seconds ---" % (time.time() - start_time),
 ################ NEW CODE ################
 # transformations applied to the images 
 transform_train = transforms.Compose([
-    transforms.RandomRotation(90), 
+    transforms.RandomRotation((90,90)), 
     transforms.RandomHorizontalFlip(p=0.5),
     transforms.RandomVerticalFlip(p=0.5)
 ])
 
-# make the data into 4D tensor and put each batch into iterable 
-dataset_train = LensingDataset(inputs_train, transform_train)
-trainloader = DataLoader(dataset_train, batch_size=n_perbatch, shuffle=False)
+targets_temp = np.concatenate((np.array([Omegas_train]).T, np.array([sigmas_train]).T), axis=1) # temp stacked targets of all comsos being trained
+targets_train = np.repeat(targets_temp, n_trainimages, axis=0)  # repeat each set of parameters by the number of batches
 
+# make the data into 4D tensor and put each batch into iterable 
+dataset_train = LensingDataset(inputs_train, targets_train, transform=None)  # run with not flipping for now 
+trainloader = DataLoader(dataset_train, batch_size=n_perbatch, shuffle=True)
+
+############### END OF NEW CODE ############
 
 # train the network 
 start_time = time.time()  # to time the training
@@ -301,30 +308,41 @@ losseslist_validate = []
 for epoch in range(n_epoch): 
     running_loss = 0.0   # running loss of training per epoch
     
+    ############### NEW CODE #############
+    net = net.train()
+        
     for i, data in enumerate(trainloader, 0): 
-        data = data.to(device)  # GPU
+        #data = data.to(device)  # GPU
         # update target value of sigma8 and omegam (stacked to the correct dimension to match the number per batch)
-        if (i % n_batch_train == 0): 
-            params_index = int(i//n_batch_train) 
+        #if (i % n_batch_train == 0): 
+            #params_index = int(i//n_batch_train) 
             
             # change target every n_batch_train batches  
-            target = torch.tensor([Omegas_train[params_index], sigmas_train[params_index]]).repeat(n_perbatch, 1)  
-            target = target.to(device)  # GPU
+            #target = torch.tensor([Omegas_train[params_index], sigmas_train[params_index]]).repeat(n_perbatch, 1)  
+            #target = target.to(device)  # GPU
+        
+        ############### NEW CODE #############
+        images, targets = data
+        images = images.to(device)
+        targets = targets.to(device)
         
         optimizer.zero_grad()
         
         # forward + backward + optimize
-        outputs = net(data)
-        loss = criterion(outputs, target)
+        outputs = net(images)
+        loss = criterion(outputs, targets)
         loss.backward()
         optimizer.step()
         
         running_loss += loss.item()
     
     print('Epoch %d training loss: %.3f' % (epoch + 1, running_loss/len(trainloader)), flush=True)
-    losseslist_train.append(running_loss/len(trainloader))
+    losseslist_train.append(running_loss/len(trainloader))   # save training loss entry 
 
     # Validation 
+    ######### NEW CODE ##########
+    net = net.eval()
+    
     n_batch_validate = int(n_validateimages/n_perbatch_validate)
     targets_temp = np.concatenate((np.array([Omegas_validate]).T, np.array([sigmas_validate]).T), axis=1) # temp stacked targets of all comsos being trained
     targets_validate = np.repeat(targets_temp, n_batch_validate, axis=0)  # repeat each set of parameters by the number of batches
@@ -332,7 +350,7 @@ for epoch in range(n_epoch):
                                                  True, loss_fn=criterion, target=targets_validate)
     
     print('Epoch %d validation loss: %.3f' % (epoch + 1, np.sum(losses_validate)/len(losses_validate)), flush=True)
-    losseslist_validate.append(np.sum(losses_validate)/len(losses_validate))
+    losseslist_validate.append(np.sum(losses_validate)/len(losses_validate))    # save validation loss entry 
     
     scheduler.step()  # update learning rate 
 
@@ -341,9 +359,9 @@ print("--- Training time: %s seconds ---" % (time.time() - start_time), flush=Tr
 
 
 # save the network 
-PATH_save = '/n/holyscratch01/dvorkin_lab/Users/tianliwang/fullNet_90Cosmo_30epoch_flip.pth'
+PATH_save = '/n/holyscratch01/dvorkin_lab/Users/tianliwang/fullNet_90Cosmo_30epoch_shuffle.pth'
 torch.save(net.state_dict(), PATH_save) 
 
 # save the losses 
-np.save('/n/holyscratch01/dvorkin_lab/Users/tianliwang/losses_output_flip.npy', [losseslist_train, losseslist_validate])
+np.save('/n/holyscratch01/dvorkin_lab/Users/tianliwang/losses_output_shuffle.npy', [losseslist_train, losseslist_validate])
 
