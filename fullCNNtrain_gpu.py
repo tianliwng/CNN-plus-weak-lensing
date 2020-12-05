@@ -218,7 +218,6 @@ class Net (nn.Module):
         
         return x
  
-################ NEW CODE ################
 # dataset Class 
 class LensingDataset(Dataset):
     """Lensing images dataset."""
@@ -282,7 +281,6 @@ inputs_validate = read_files(rootpath, Omegastrings_validate, sigmastrings_valid
                              startIndices_validate, endIndices_validate)
 print("--- Time to load the files: %s seconds ---" % (time.time() - start_time), flush=True)
 
-################ NEW CODE ################
 # transformations applied to the images 
 transform_train = transforms.Compose([
     transforms.RandomRotation((90,90)), 
@@ -297,7 +295,6 @@ targets_train = np.repeat(targets_temp, n_trainimages, axis=0)  # repeat each se
 dataset_train = LensingDataset(inputs_train, targets_train, transform=None)  # run with not flipping for now 
 trainloader = DataLoader(dataset_train, batch_size=n_perbatch, shuffle=True)
 
-############### END OF NEW CODE ############
 
 # train the network 
 start_time = time.time()  # to time the training
@@ -307,21 +304,10 @@ losseslist_validate = []
 
 for epoch in range(n_epoch): 
     running_loss = 0.0   # running loss of training per epoch
-    
-    ############### NEW CODE #############
+
     net = net.train()
         
     for i, data in enumerate(trainloader, 0): 
-        #data = data.to(device)  # GPU
-        # update target value of sigma8 and omegam (stacked to the correct dimension to match the number per batch)
-        #if (i % n_batch_train == 0): 
-            #params_index = int(i//n_batch_train) 
-            
-            # change target every n_batch_train batches  
-            #target = torch.tensor([Omegas_train[params_index], sigmas_train[params_index]]).repeat(n_perbatch, 1)  
-            #target = target.to(device)  # GPU
-        
-        ############### NEW CODE #############
         images, targets = data
         images = images.to(device)
         targets = targets.to(device)
@@ -340,7 +326,6 @@ for epoch in range(n_epoch):
     losseslist_train.append(running_loss/len(trainloader))   # save training loss entry 
 
     # Validation 
-    ######### NEW CODE ##########
     net = net.eval()
     
     n_batch_validate = int(n_validateimages/n_perbatch_validate)
